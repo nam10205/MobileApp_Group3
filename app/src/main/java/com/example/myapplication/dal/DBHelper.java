@@ -11,6 +11,8 @@ import com.example.myapplication.models.Customer;
 import com.example.myapplication.models.Fruit;
 import com.example.myapplication.models.Order;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -21,7 +23,6 @@ public class DBHelper extends SQLiteOpenHelper {
     public static final String DB_NAME = "FruitShopDB";
     public static final int DB_VERSION = 1;
 
-    // "Order" is an SQL keyword, so the table name must always be quoted.
     private static final String ORDER_TABLE = "\"Order\"";
 
     public DBHelper(Context context) {
@@ -70,8 +71,8 @@ public class DBHelper extends SQLiteOpenHelper {
         db.execSQL(createCustomer);
         db.execSQL(createOrder);
 
-        db.execSQL("INSERT INTO Account(username,password,role) VALUES('admin','admin123','Admin')");
-        db.execSQL("INSERT INTO Account(username,password,role) VALUES('customer','123456','Customer')");
+        db.execSQL("INSERT INTO Account(username,password,role) VALUES('admin','" + hashPassword("admin123") + "','Admin')");
+        db.execSQL("INSERT INTO Account(username,password,role) VALUES('customer','" + hashPassword("123456") + "','Customer')");
 
         db.execSQL("INSERT INTO Customer(fullname,phone,email,accountId) " +
                 "VALUES('Nguyen Van A','0901234567','customer@fruitshop.com',2)");
@@ -99,10 +100,26 @@ public class DBHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put("username", username);
-        values.put("password", password);
+        values.put("password", hashPassword(password));
         values.put("role", role);
         long result = db.insert("Account", null, values);
         return result != -1;
+    }
+
+    public static String hashPassword(String password) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(password.getBytes());
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 algorithm not found", e);
+        }
     }
 
     public boolean insertCustomer(String fullname, String phone, String email, int accountId) {
@@ -159,8 +176,6 @@ public class DBHelper extends SQLiteOpenHelper {
         cursor.close();
         return customer;
     }
-
-    // ---------- Fruit ----------
 
     public boolean insertFruit(String name, String category, double price, int quantity,
                                String expiryDate, String description) {
@@ -237,10 +252,6 @@ public class DBHelper extends SQLiteOpenHelper {
                 cursor.getDouble(3), cursor.getInt(4), cursor.getString(5), cursor.getString(6));
     }
 
-    // ---------- Order ----------
-
-    // Places an order and reduces the fruit's stock in one transaction.
-    // Returns false if the fruit no longer exists, is expired, or has too little stock.
     public boolean placeOrder(int customerId, int fruitId, int quantity) {
         SQLiteDatabase db = this.getWritableDatabase();
         db.beginTransaction();
@@ -272,7 +283,6 @@ public class DBHelper extends SQLiteOpenHelper {
         }
     }
 
-    // Returns all orders when customerId is null, otherwise only that customer's orders.
     public List<Order> getOrders(Integer customerId) {
         SQLiteDatabase db = this.getReadableDatabase();
         String sql = "SELECT id, customerId, orderDate, totalAmount, status FROM " + ORDER_TABLE;
